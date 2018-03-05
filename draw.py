@@ -194,22 +194,28 @@ class draw(Circuit):
             # move all cells in nets that are nearly all on one side
             if len(nets) > 0:
                 for k in nets:
+                    sleep(0.0001)
                     if k > 0.5: # mostly True
                         for cell in nets[k]:
                             if not cell.side:
-                                sleep(0.0001)
                                 self.move_cell(cell)
-                                self.myCanvas.update()
                                 numMoved = numMoved + 1
                     else: # mostly False
                         for cell in nets[k]:
                             if cell.side:
-                                sleep(0.0001)
                                 self.move_cell(cell)
-                                self.myCanvas.update()
                                 numMoved = numMoved + 1
+                    self.myCanvas.update()
 
+            sleep(0.0001)
+            count = 0
             while numMoved < self.numCells:
+                if count == 25:
+                    self.myCanvas.update()
+                    sleep(0.0001)
+                    count = 0
+                else:
+                    count = count + 1
                 heavyside = self.calcBalance()
                 gains = {}
                 for cell in self.cells:
@@ -220,30 +226,28 @@ class draw(Circuit):
                     # choose node with highest gain that doesn't imbalance nets
                     switch = sorted(gains, reverse=True)[0]
                     # move node to the other side and lock it
-                    sleep(0.0001)
                     self.move_cell(gains[switch])
-                    self.myCanvas.update()
 
                     cut = self.calcCutSize()
                     self.myCanvas.delete(self.costtext)
                     self.costtext = self.myCanvas.create_text(200, self.costy, text=cut)
-                    self.myCanvas.update()
                     if cut not in sols:
                         sols[cut] = deepcopy(self.cells)
                 else:
                     break
+            self.myCanvas.update()
 
+            sleep(0.0001)
             # choose best cut in this pass (smallest cutcost) and append to solutions
             best = sorted(sols)[0]
             print "Best cut " + str(n+1) + "/6: " + str(best)
             if best not in self.solutions:
                 self.solutions[best] = deepcopy(sols[best])
             # roll back and do another iteration
+            sleep(0.0001)
             for i,cell in enumerate(sols[best]):
                 if self.cells[i].side is not cell.side:
-                    sleep(0.0001)
                     self.move_cell(self.cells[i])
-                    self.myCanvas.update()
             self.myCanvas.delete(self.costtext)
             self.costtext = self.myCanvas.create_text(200, self.costy, text=best)
             self.myCanvas.update()
@@ -251,11 +255,10 @@ class draw(Circuit):
                 break
 
         final = sorted(self.solutions)[0]
+        sleep(0.0001)
         for i,cell in enumerate(self.solutions[final]):
             if self.cells[i].side is not cell.side:
-                sleep(0.0001)
                 self.move_cell(self.cells[i])
-                self.myCanvas.update()
         self.myCanvas.delete(self.costtext)
         self.costtext = self.myCanvas.create_text(200, self.costy, text=final)
         self.myCanvas.update()
