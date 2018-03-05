@@ -1,205 +1,173 @@
 from random import *
+import math
+
 
 class Cell(object):
-    """ Cell object with x,y position
+    """ Cell object
+          side = "side" of partition. Boolean
+          is_locked = False if unlocked
+          cellnets = list of net ids that this cell is in
     """
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+
+    def __init__(self):
+        self.side = sample([True,False],1)[0]
+        self.is_locked = False
+        self.cellNets = []
 
 
 class Circuit:
     def __init__(self, f):
         [self.numCells, self.numNets, self.ny, self.nx] = [int(s) for s in f.readline().split()]
 
+        self.cells = []
+        """ Generate list of Cell objects in range numCells
+        """
+        for cellNum in range(self.numCells):
+            self.cells.append(Cell())
+            # even cells get False side of partition (keep approximately even distribution)
+
+        right = 0
+        left = 0
+        for c in self.cells:
+            if c.side:
+                right = right + 1
+            else:
+                left = left + 1
+        if right > left:
+            for _ in range((right-left)/2):
+                while True:
+                    c = sample(self.cells, 1)[0]
+                    if c.side:
+                        break
+                c.side = not c.side
+        else:
+            for _ in range((left-right)/2):
+                while True:
+                    c = sample(self.cells, 1)[0]
+                    if not c.side:
+                        break
+                c.side = not c.side
+        right = 0
+        left = 0
+        for c in self.cells:
+            if c.side:
+                right = right + 1
+            else:
+                left = left + 1
+        # make sure evenly distributed
+        assert right - left in range(-1, 2)
+
         self.nets = []
-        self.costs = []
-        for _ in range(self.numNets):
+        """ Generate a list of all nets
+            Each net is a list of cells connected to each other
+            add the netNum to the cellnets list for each cell
+        """
+        for netNum in range(self.numNets):
             line = f.readline().split()
             if len([s for s in line]) is 0:
                 # empty line, read next
                 line = f.readline().split()
             # source of net
-            net = [int(line[1])]
+            source = int(line[1])
+            assert source in range(self.numCells)
+            self.cells[source].cellNets.append(netNum)
+
             # sinks of net
-            net.append([int(s) for s in line[2:]])
-            self.nets.append(net)
-            self.costs.append(0)
+            sink_cells = []
+            sinks = [int(s) for s in line[2:]]
+            for sink in sinks:
+                assert sink in range(self.numCells)
+                self.cells[sink].cellNets.append(netNum)
+                sink_cells.append(self.cells[sink])
+            self.nets.append([self.cells[source]] + sink_cells)
         f.close()
 
-        self.grid = []
-        for _ in range(self.ny):
-            row = []
-            for _ in range(self.nx):
-                row.append(' ')
-            self.grid.append(row)
-
-        self.cost = 0
-        self.cells = []
-
-        self.init_place()
-
-    def is_empty(self, x, y):
-        """ Checks the status of the cell position x,y
-        returns:
-            False if the cell is not empty or x,y is not in the grid range
-            True otherwise
+    def calcGain(self, cell):
+        """ method: calcGain
+        calculates the gain of moving a cell from one side to the other
+        MULTI TERMINAL NETS:
+            default K-L doesn't differentiate between cells within a net - a net that spans the partition
+            does not impact the gain function
+            To encourage the K-L algorithm to move cells to minimize net spanning, the following alterations
+            have been made:
+                - the gain a net is proportional to the number of cells in the net on the other side of
+                    the partition
+                    ie net with 90% of cells on other side has a higher gain than one with 60% cells on other side
+                - between 10-90%, gain is proportional to # nets on other side. >90% and <10%, gain is +/-1
+        :param cell: cell object of cell under consideration
+        :return: gain of moving cell, #edges that cross - #num edges that do not
+                to adapt for multiple nets, only count number of nets that cross the partition, not num cells
         """
-        if x in range(self.nx) and y in range(self.ny):
-            if self.grid[y][x] == ' ':
+        # IMPROVED K-L
+        # gain = 0.
+        # for netNum in cell.cellNets:
+        #     netsize = len(self.nets[netNum])
+        #     otherside = 0
+        #     for c in self.nets[netNum]:
+        #         if c.side is not cell.side:
+        #             otherside = otherside + 1
+        #         if otherside * 2 > netsize:
+        #             if (otherside * 100)/netsize > 90:
+        #                 gain = gain + 1.
+        #             else:
+        #                 gain = gain + float(otherside)/float(netsize)
+        #         else:
+        #             if (otherside * 100)/netsize < 10:
+        #                 gain = gain - 1.
+        #             else:
+        #                 gain = gain - (1-float(otherside)/float(netsize))
+
+        # DEFAULT K-L
+        gain = 0
+        for netNum in cell.cellNets:
+            netcross = False
+            for c in self.nets[netNum]:
+                if c.side is not cell.side:
+                    netcross = True
+                    break
+            if netcross:
+                gain = gain + 1
+            else:
+                gain = gain - 1
+
+        return gain
+
+    def calcBalance(self):
+        """ method calcBalance
+        calculates the "heavyside" of the circuit partition, "True" or "False"
+        :return: heavy side, True or False
+        """
+        # result = number of cells on True side
+        result = 0
+        for cell in self.cells:
+            if cell.side:
+                result = result + 1
+
+        if result*2 > self.numCells:
+            return True
+        else:
+            return False
+
+    def crossesPart(self, net):
+        """ method crossesPart
+        determines whether or not a net spans the partition
+        :param net: the net being considered
+        :return: True if the net crosses the partition, False otherwise
+        """
+        side = net[0].side
+        for each in net:
+            if each.side != side:
                 return True
         return False
 
-    def put_cell(self, x, y, num):
-        """ Places cell #num on the array at empty position x,y
-        sets:
-            - self.grid at x,y, and updates image with initial placement
-        returns:
-            False if the cell fails not_empty
-            True otherwise
-        :param x: x value of cell
-        :param y: y value of cell
+    def calcCutSize(self):
+        """ method calcCutSize
+        calculates the number of nets that span the partition
+        :return: cutsize of the partition
         """
-        if self.is_empty(x,y):
-            self.grid[y][x] = num
-            return True
-        return False
+        cutsize = 0
+        for net in self.nets:
+            if self.crossesPart(net):
+                cutsize = cutsize + 1
 
-    def init_place(self):
-        """ Places cells on the array initially
-        assumes:
-            - nothing has been placed before
-        sets:
-            - self.grid, and updates image with initial placement
-            - self.cost
-        asserts:
-            - if failure to place cell in grid (put_cell returns False)
-            - if failure to calculate cost (calc_cost returns False)
-        """
-        for i in range(self.numCells):
-            x = randint(0,self.nx)
-            y = randint(0,self.ny)
-            while not self.is_empty(x,y):
-                x = randint(0, self.nx)
-                y = randint(0, self.ny)
-            assert self.put_cell(x, y, i) is True
-            self.cells.append(Cell(x,y))
-
-        assert self.calc_cost() is True
-
-    def switch(self, x1, y1, x2, y2):
-        """ Switches cells specified by x1,y1 and x2,y2
-        :param x1: x coordinate of cell1
-        :param y1: y coordinate of cell1
-        :param x2: x coordinate of cell2
-        :param y2: y coordinate of cell2
-        assumes:
-            - at least one cell is not empty
-        sets:
-            - self.grid, and updates image with new placement
-            - self.cells, and updates new position for moved cell
-            - self.cost
-        asserts:
-            - if failure to switch cells (both cells are empty)
-        """
-        # both positions should not be empty
-        assert (self.is_empty(x1, y1) is not True) or (self.is_empty(x2, y2) is not True)
-        # x1,y1 is empty
-        if self.is_empty(x1, y1):
-            self.grid[y1][x1] = self.grid[y2][x2]
-            self.cells[self.grid[y2][x2]].x = x1
-            self.cells[self.grid[y2][x2]].y = y1
-            self.grid[y2][x2] = ' '
-            self.update_cost(self.grid[y1][x1])
-        # x2,y2 is empty
-        elif self.is_empty(x2, y2):
-            self.grid[y2][x2] = self.grid[y1][x1]
-            self.cells[self.grid[y1][x1]].x = x2
-            self.cells[self.grid[y1][x1]].y = y2
-            self.grid[y1][x1] = ' '
-            self.update_cost(self.grid[y2][x2])
-        else:
-            n = self.grid[y2][x2]
-            self.grid[y2][x2] = self.grid[y1][x1]
-            self.cells[self.grid[y1][x1]].x = x2
-            self.cells[self.grid[y1][x1]].y = y2
-            self.grid[y1][x1] = n
-            self.cells[n].x = x1
-            self.cells[n].y = y1
-            self.update_cost(self.grid[y1][x1])
-            self.update_cost(self.grid[y2][x2])
-
-    def compare_switch_cost(self, x1, y1, x2, y2):
-        """ Compares the cost functions of the switching of cells at x1,y1 and x2,y2
-        :param x1: x coordinate of cell1
-        :param y1: y coordinate of cell1
-        :param x2: x coordinate of cell2
-        :param y2: y coordinate of cell2
-        :return: the difference in cost function
-        """
-        cost = self.cost
-        self.switch(x1,y1,x2,y2)
-        deltaC = self.cost - cost
-        return deltaC
-
-    def update_cost(self, id):
-        """ Calculates the updated cost given a moved net with index id, to prevent recalculating full cost
-        :param: id: the if of the source/sink cell that was moved
-        assumes:
-            - valid net list in self.nets
-        sets:
-            - self.cost
-        :return: True once complete
-        """
-        cost = 0
-        for i, [source, sinks] in enumerate(self.nets):
-            if id == source:
-                self.costs[i] = self.calc_half_perimeter(source, sinks)
-                cost += self.costs[i]
-            elif id in sinks:
-                self.costs[i] = self.calc_half_perimeter(source, sinks)
-                cost += self.costs[i]
-            else:
-                cost += self.costs[i]
-
-        self.cost = cost
-        return True
-
-    def calc_cost(self):
-        """ Calculates the initial cost for all nets
-        assumes:
-            - valid net list in self.nets
-        sets:
-            - self.cost
-        :return: True once complete
-        """
-        cost = 0
-        for i,[source, sinks] in enumerate(self.nets):
-            self.costs[i] = self.calc_half_perimeter(source, sinks)
-            cost += self.costs[i]
-        self.cost = cost
-        return True
-
-    def calc_half_perimeter(self, source, sinks):
-        """ Calculates the half perimeter smallest bounding box cost of a net
-        assumes:
-            - valid cell positions in source, sinks
-        asserts:
-            - if failure to calculate cost (any cell x,y not in grid range)
-        :param source: index of the source cell
-        :param sinks: indices of the sink cells
-        :return: half-perimeter cost of the net
-        """
-        deltax = 0
-        deltay = 0
-        assert self.cells[source].x in range(self.nx) and self.cells[source].y in range(self.ny)
-        for sink in sinks:
-            assert self.cells[sink].x in range(self.nx) and self.cells[sink].y in range(self.ny)
-            dx = abs(self.cells[source].x - self.cells[sink].x)
-            if dx > deltax:
-                deltax = dx
-            dy = abs(self.cells[source].y - self.cells[sink].y)
-            if dy > deltay:
-                deltay = dy
-        return deltax + deltay
-
+        return cutsize
