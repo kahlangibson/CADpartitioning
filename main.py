@@ -16,12 +16,12 @@ def read_infile():
         myCircuit.delete()
     filename = file.get()
     f = open(dir+filename, "r")  # gets closed inside simAnneal object
-    myCircuit = draw(root, startT, beta, exitRate, runWith0, f)
+    myCircuit = draw(root, f)
     runButton.pack(side='left', padx=20, pady=10)
 
-def runAnneal():
+def runPartition():
     global myCircuit
-    myCircuit.runSimAnneal()
+    myCircuit.runPartition()
 
 
 ## main ##
@@ -29,7 +29,7 @@ root = Tk()
 root.lift()
 root.attributes("-topmost", True)
 global runButton
-runButton = tk.Button(root, text="Run Placement", command=runAnneal)
+runButton = tk.Button(root, text="Run Partition", command=runPartition)
 
 myCircuit = None
 

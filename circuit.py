@@ -82,26 +82,6 @@ class Circuit:
             self.nets.append([self.cells[source]] + sink_cells)
         f.close()
 
-    def calcGainImproved(self, cell, p):
-        """ method: calcGainImproved
-        for handling multi-terminal nets
-        :param cell: cell object of cell under consideration
-        :return: gain of moving cell
-        """
-        # if a net is more than p% on other side, +1
-        # if a net is less than 1-p% on other side, -1
-        gain = 0
-        for netNum in cell.cellNets:
-            net = self.nets[netNum]
-            count = 0
-            for c in net:
-                if cell.side != c.side:
-                    count = count + 1
-            if float(count)/float(len(self.nets[netNum])) > p:
-                gain = gain + 1
-            elif float(count)/float(len(self.nets[netNum])) < 1.-p:
-                gain = gain - 1
-
     def calcGain(self, cell):
         """ method: calcGain
         calculates the gain of moving a cell from one side to the other
@@ -109,7 +89,6 @@ class Circuit:
         :return: gain of moving cell, #edges that cross - #num edges that do not
                 to adapt for multiple nets, only count number of nets that cross the partition, not num cells
         """
-        # DEFAULT K-L
         gain = 0
         for netNum in cell.cellNets:
             netcross = False
