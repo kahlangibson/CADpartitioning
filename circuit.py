@@ -82,41 +82,33 @@ class Circuit:
             self.nets.append([self.cells[source]] + sink_cells)
         f.close()
 
+    def calcGainImproved(self, cell, p):
+        """ method: calcGainImproved
+        for handling multi-terminal nets
+        :param cell: cell object of cell under consideration
+        :return: gain of moving cell
+        """
+        # if a net is more than p% on other side, +1
+        # if a net is less than 1-p% on other side, -1
+        gain = 0
+        for netNum in cell.cellNets:
+            net = self.nets[netNum]
+            count = 0
+            for c in net:
+                if cell.side != c.side:
+                    count = count + 1
+            if float(count)/float(len(self.nets[netNum])) > p:
+                gain = gain + 1
+            elif float(count)/float(len(self.nets[netNum])) < 1.-p:
+                gain = gain - 1
+
     def calcGain(self, cell):
         """ method: calcGain
         calculates the gain of moving a cell from one side to the other
-        MULTI TERMINAL NETS:
-            default K-L doesn't differentiate between cells within a net - a net that spans the partition
-            does not impact the gain function
-            To encourage the K-L algorithm to move cells to minimize net spanning, the following alterations
-            have been made:
-                - the gain a net is proportional to the number of cells in the net on the other side of
-                    the partition
-                    ie net with 90% of cells on other side has a higher gain than one with 60% cells on other side
-                - between 10-90%, gain is proportional to # nets on other side. >90% and <10%, gain is +/-1
         :param cell: cell object of cell under consideration
         :return: gain of moving cell, #edges that cross - #num edges that do not
                 to adapt for multiple nets, only count number of nets that cross the partition, not num cells
         """
-        # IMPROVED K-L
-        # gain = 0.
-        # for netNum in cell.cellNets:
-        #     netsize = len(self.nets[netNum])
-        #     otherside = 0
-        #     for c in self.nets[netNum]:
-        #         if c.side is not cell.side:
-        #             otherside = otherside + 1
-        #         if otherside * 2 > netsize:
-        #             if (otherside * 100)/netsize > 90:
-        #                 gain = gain + 1.
-        #             else:
-        #                 gain = gain + float(otherside)/float(netsize)
-        #         else:
-        #             if (otherside * 100)/netsize < 10:
-        #                 gain = gain - 1.
-        #             else:
-        #                 gain = gain - (1-float(otherside)/float(netsize))
-
         # DEFAULT K-L
         gain = 0
         for netNum in cell.cellNets:
